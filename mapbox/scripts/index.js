@@ -13,6 +13,7 @@ const map = new mapboxgl.Map({
     minZoom: 2, // sets min zoom
     zoom: 2, // starting zoom
     maxBounds: bounds, // restrict panning area
+    pitchWithRotate: false, // restrict picth
     hash: true // enable custon center/zoom via URL
 });
 
@@ -491,8 +492,13 @@ map.addControl(
 document.querySelector('.mapboxgl-ctrl-geocoder--input').placeholder = "State, City, Zip, Address";
 
 // Zoom in/out, compass, fullscreen
-const nav = new mapboxgl.NavigationControl();
+const nav = new mapboxgl.NavigationControl({
+    visualizePitch: true
+});
 map.addControl(nav, 'bottom-right');
+
+// Disable rotate and pitch
+map.dragRotate.disable();
 
 map.addControl(new mapboxgl.FullscreenControl({
     container: document.querySelector('body')
@@ -513,6 +519,7 @@ const scale = new mapboxgl.ScaleControl({
 map.addControl(scale);
 
 scale.setUnit('imperial');
+
 
 
 // // Clusters / Popups
