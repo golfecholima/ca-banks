@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "layers": {
+    "blocks": {
+      "source": "mapbox://tileset-source/calnewsroom/ca-banks-1-and-10-mi",
+      "minzoom": 3,
+      "maxzoom": 13
+    }
+  }
+}
