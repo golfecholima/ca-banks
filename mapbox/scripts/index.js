@@ -341,6 +341,7 @@ map.on('load', () => {
             const plur = e.features[0].properties['Block Group'];
             const dist = e.features[0].properties.HubDist;
             const pop = e.features[0].properties.total;
+            const wht = e.features[0].properties.pct_white;
             const blk = e.features[0].properties.geographic_area_name;
 
             // Ensure that if the map is zoomed out such that
@@ -356,6 +357,7 @@ map.on('load', () => {
                     `Block plurality: ${plur}<br>
                     Miles to bank: ${dist}<br>
                     Population total: ${pop}<br>
+                    Pct. White: ${wht}<br>
                     ${blk}`
                 )
                 .addTo(map);
