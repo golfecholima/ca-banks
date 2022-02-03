@@ -2,8 +2,8 @@
 -- CENSUS DEMOGRAPHICS TABLES --
 --------------------------------
 -- STATE DEMOGRAPHICS --
-create table state (
-	id serial,
+create table demographics_ca (
+	id varchar,
 	geographic_area_name varchar,
 	total integer,
 	hispanic_or_latino integer,
@@ -80,14 +80,10 @@ create table state (
 	wt_blkafam_natcon_asian_natisl_othr integer
 );
 
-alter table state
-alter column id type varchar;
-
 copy state
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/california-demographics.csv' with (format csv, header);
 
-select *
-from state;
+create index demographcis_ca_bt_idx on demographcis_ca using btree (id);
 
 -- P2 LOOKUP and STATEWIDE PCTS --
 create table p2_lookup_w_state_pct (
@@ -98,20 +94,16 @@ create table p2_lookup_w_state_pct (
 	name_orig varchar,
 	name_lower varchar,
 	value integer,
-	pct numeric(3, 2)
+	pct numeric(5,2)
 );
-
-alter table p2_lookup_w_state_pct
-alter column pct type numeric(5, 2);
 
 copy p2_lookup_w_state_pct
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/p2-lookup-w-pct.csv' with (format csv, header);
 
-select *
-from p2_lookup_w_state_pct;
+create index p2_lookup_w_state_pct_bt_idx on p2_lookup_w_state_pct using btree (id);
 
 -- BLOCK DEMOGRAPHICS --
-create table blocks_demographics (
+create table demographics_ca_blocks (
 	id char(24),
 	geographic_area_name varchar,
 	total integer,
@@ -189,61 +181,91 @@ create table blocks_demographics (
 	wt_blkafam_natcon_asian_natisl_othr integer
 );
 
-copy blocks_demographics
+copy demographics_ca_blocks
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/blocks-demographics.csv' with (format csv, header);
 
-create view blocks_demographics_geoid as
-select right(id, 15) as geoid
-from blocks_demographics
-order by total desc;
-
-select *
-from blocks_demographics_geoid;
+create index demographics_ca_blocks_bt_idx on demographics_ca_blocks using btree (id);
 
 -------------------------------
 -- CENSUS SHAPE/TIGER TABLES --
 -------------------------------
 -- BLOCK SHAPES --
--- $ shp2pgsql -I -s 4269 -W Latin1 ~/Documents/projects/ca-banks/sql/data/source/blocks/tl_2021_06_tabblock20/tl_2021_06_tabblock20.shp ca_blocks | psql -d ca-banks -U postgres
-alter table ca_blocks
-	rename to ca_blocks_shp;
+-- $ shp2pgsql -I -s 4269 -W Latin1 ~/Documents/projects/ca-banks/sql/data/source/blocks/tl_2021_06_tabblock20/tl_2021_06_tabblock20.shp shp_ca_blocks | psql -d ca-banks -U postgres
 
-select *,
-	st_astext(geom) as wkt
-from ca_blocks_shp;
+create index shp_ca_blocks_idx on shp_ca_blocks using gist (geom);
+create index shp_ca_blocks_bt_idx on shp_ca_blocks using btree (geoid);
 
 -- COUNTY SHAPES --
--- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_county/tl_2021_us_county.shp ca_counties_shp | psql -d ca-banks -U postgres
-alter table ca_counties_shp
-	rename to us_counties_shp;
+-- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_county/tl_2021_us_county.shp shp_us_counties | psql -d ca-banks -U postgres
 
-select *
-from us_counties_shp;
+create table shp_ca_counties as (
+SELECT shp_us_counties.gid,
+	shp_us_counties.statefp,
+	shp_us_counties.countyfp,
+	shp_us_counties.countyns,
+	shp_us_counties.geoid,
+	shp_us_counties.name,
+	shp_us_counties.namelsad,
+	shp_us_counties.lsad,
+	shp_us_counties.classfp,
+	shp_us_counties.mtfcc,
+	shp_us_counties.csafp,
+	shp_us_counties.cbsafp,
+	shp_us_counties.metdivfp,
+	shp_us_counties.funcstat,
+	shp_us_counties.aland,
+	shp_us_counties.awater,
+	shp_us_counties.intptlat,
+	shp_us_counties.intptlon,
+	shp_us_counties.geom
+FROM shp_us_counties
+WHERE shp_us_counties.statefp::text = '06'::text);
 
-create view ca_counties_shp as
-select *
-from us_counties_shp
-where statefp = '06';
+create index shp_ca_counties_idx on shp_ca_counties using gist (geom);
+create index shp_ca_counties_bt_idx on shp_ca_counties using btree (geoid);
 
-select *
-from ca_counties_shp;
+-- CALIFORNIA SHAPES --
+-- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_state/tl_2021_us_state.shp shp_us_states | psql -d ca-banks -U postgres
+
+create table shp_ca as (
+	SELECT shp_us_states.*
+	FROM shp_us_states
+	WHERE shp_us_states.statefp::text = '06'::text
+);
+
+create index shp_ca_gist_idx on shp_ca using gist (geom);
+create index shp_ca__bt_idx on shp_ca using btree (geoid);
 
 -- URBAN AREA SHAPES --
--- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_uac10/tl_2021_us_uac10.shp us_urban_areas | psql -d ca-banks -U postgres
-alter table us_urban_areas
-	rename to us_urban_areas_shp;
+-- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_uac10/tl_2021_us_uac10.shp shp_us_urban_areas | psql -d ca-banks -U postgres
 
-create view ca_urban_areas_shp as
-select *
-from us_urban_areas_shp
-where name10 like '%, CA';
+create table shp_ca_urban_areas as (
+SELECT shp_us_urban_areas.gid,
+	shp_us_urban_areas.uace10,
+	shp_us_urban_areas.geoid10,
+	shp_us_urban_areas.name10,
+	shp_us_urban_areas.namelsad10,
+	shp_us_urban_areas.lsad10,
+	shp_us_urban_areas.mtfcc10,
+	shp_us_urban_areas.uatyp10,
+	shp_us_urban_areas.funcstat10,
+	shp_us_urban_areas.aland10,
+	shp_us_urban_areas.awater10,
+	shp_us_urban_areas.intptlat10,
+	shp_us_urban_areas.intptlon10,
+	shp_us_urban_areas.geom
+FROM shp_us_urban_areas
+WHERE shp_us_urban_areas.name10::text ~~ '%, CA'::text);
+
+create index shp_us_urban_areas_gist_idx on shp_us_urban_areas using gist (geom);
+create index shp_us_urban_areas_bt_idx on shp_us_urban_areas using btree (geoid);
 
 ------------------------------
 -- BANK/CREDIT UNION TABLES --
 ------------------------------
 -- BANKS --
 create table fdic (
-	year varchar(4),
+	year integer,
 	cert varchar(5),
 	brnum varchar(5),
 	uninumbr varchar(6) primary key,
@@ -341,21 +363,259 @@ create table fdic (
 copy fdic
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/fdic-deposits-ca-az-nv-or-11-12-geocodio.csv' with (format csv, header);
 
-select *
-from fdic;
+create table pts_fdic as (select * from fdic);
 
-alter table fdic
-add column geog_point geography(point, 4269);
+alter table pts_fdic
+	add column geog_point geography(point, 4269),
+	add column wkt text;
+	
+create index fdic_pts_idx on pts_fdic using gist (geog_point);
+create index fdic_pts_bt_idx on pts_fdic using btree (uninumbr);
 
-update fdic
-set geog_point = st_setsrid(st_makepoint(longitude, latitude), 4269)::geography;
+create or replace function update_pts_fdic()
+	returns trigger as
+	$$
+	begin
+		raise info 'Triggered!';
+		update pts_fdic p
+			set latitude = (select f.latitude from fdic f where p.uninumbr = f.uninumbr),
+			longitude = (select f.longitude from fdic f where p.uninumbr = f.uninumbr);
+		update pts_fdic
+			set geog_point = st_setsrid(st_makepoint(longitude, latitude), 4269)::geography;
+		update pts_fdic
+			set wkt = st_astext(geog_point);
+		return new;
+	end;
+	$$ language plpgsql;
+	
+create trigger fdic_statement
+	after update
+		on fdic
+	for each statement
+	execute procedure update_pts_fdic();
 
-create index bank_pts_idx on fdic using gist (geog_point);
+-- Update lat, lng w/ low accuracy score w/ Google Geocoded --
+create table fdic_g (
+	year integer,
+	cert varchar(5),
+	brnum varchar(5),
+	uninumbr varchar(6) primary key,
+	namefull varchar(65),
+	addresbr varchar(70),
+	citybr varchar(22),
+	cntynamb varchar(15),
+	stalpbr varchar(2),
+	zipbr varchar(5),
+	brcenm varchar(3),
+	consold varchar(4),
+	brsertyp varchar(2),
+	depsumbr bigint,
+	bkmo varchar(1),
+	cbsa_div_namb varchar(40),
+	city2br varchar(22),
+	cntrynab varchar(13),
+	cntynumb varchar(3),
+	csabr varchar(3),
+	csanambr varchar(39),
+	divisionb varchar(5),
+	msabr varchar(5),
+	msanamb varchar(36),
+	metrobr varchar(1),
+	microbr varchar(1),
+	namebr varchar(65),
+	nectabr varchar(1),
+	necnamb varchar,
+	placenum varchar(1),
+	sims_acquired_date date,
+	sims_established_date date,
+	sims_latitude numeric(11, 8),
+	sims_longitude numeric(11, 8),
+	sims_description varchar(16),
+	sims_projection varchar(17),
+	stcntybr varchar(5),
+	stnamebr varchar(10),
+	stnumbr varchar(2),
+	hctmult varchar(4),
+	rssdhcr varchar(7),
+	namehcr varchar(67),
+	cityhcr varchar(20),
+	stalphcr varchar(2),
+	rssdid varchar(7),
+	unit varchar(1),
+	address varchar(60),
+	city__0 varchar(20),
+	stalp varchar(2),
+	zip__0 varchar(5),
+	asset bigint,
+	bkclass varchar(2),
+	call varchar(4),
+	charter varchar(5),
+	chrtagnn varchar(27),
+	chrtagnt varchar(5),
+	clcode varchar(2),
+	cntryna varchar(19),
+	denovo varchar(1),
+	depdom bigint,
+	depsum varchar(11),
+	docket varchar(5),
+	escrow varchar,
+	fdicdbs varchar(2),
+	fdicname varchar(13),
+	fed varchar(2),
+	fedname varchar(13),
+	insagnt1 varchar(3),
+	insured varchar(2),
+	insbrdd varchar,
+	insbrts varchar,
+	occdist varchar(1),
+	occname varchar(19),
+	regagnt varchar(4),
+	specgrp varchar(5),
+	specdesc varchar(22),
+	stcnty varchar(5),
+	stname varchar(20),
+	usa varchar(1),
+	latitude numeric(11, 8),
+	longitude numeric(11, 8),
+	accuracy_score numeric(4, 2),
+	accuracy_type varchar(21),
+	number varchar(6),
+	street varchar(30),
+	unit_type varchar(5),
+	unit_number varchar(5),
+	city__1 varchar(22),
+	state varchar(2),
+	county varchar(22),
+	zip__1 varchar(5),
+	country varchar(2),
+	source varchar(53),
+	geog_point text,
+	geom text,
+	g_lat numeric(11,8),
+	g_lng numeric(11,8)
+);
 
-select *,
-	st_astext(geog_point)
-from fdic;
+copy fdic_g
+from '/Users/glevines/Documents/projects/ca-banks/sd-banks-py/data/processed/fdic_google_geocode.csv' 
+with (format csv, header);
 
+update fdic f
+	set latitude = (select g.g_lat from fdic_g g where f.uninumbr = g.uninumbr),
+	longitude = (select g.g_lng from fdic_g g where f.uninumbr = g.uninumbr)
+where uninumbr in (select g.uninumbr from fdic_g g);
+
+-- Update lat, lng w/ no Google Geocoded results with manually geocoded --
+-- https://docs.google.com/spreadsheets/d/15hTTfoFnfq5E0mrHfwwQqzg9R_nYsc_nsDRz8_PAGKA/edit#gid=0 --
+create table fdic_m (
+	year integer,
+	cert varchar(5),
+	brnum varchar(5),
+	uninumbr varchar(6) primary key,
+	namefull varchar(65),
+	addresbr varchar(70),
+	citybr varchar(22),
+	cntynamb varchar(15),
+	stalpbr varchar(2),
+	zipbr varchar(5),
+	brcenm varchar(3),
+	consold varchar(4),
+	brsertyp varchar(2),
+	depsumbr bigint,
+	bkmo varchar(1),
+	cbsa_div_namb varchar(40),
+	city2br varchar(22),
+	cntrynab varchar(13),
+	cntynumb varchar(3),
+	csabr varchar(3),
+	csanambr varchar(39),
+	divisionb varchar(5),
+	msabr varchar(5),
+	msanamb varchar(36),
+	metrobr varchar(1),
+	microbr varchar(1),
+	namebr varchar(65),
+	nectabr varchar(1),
+	necnamb varchar,
+	placenum varchar(1),
+	sims_acquired_date date,
+	sims_established_date date,
+	sims_latitude numeric(11, 8),
+	sims_longitude numeric(11, 8),
+	sims_description varchar(16),
+	sims_projection varchar(17),
+	stcntybr varchar(5),
+	stnamebr varchar(10),
+	stnumbr varchar(2),
+	hctmult varchar(4),
+	rssdhcr varchar(7),
+	namehcr varchar(67),
+	cityhcr varchar(20),
+	stalphcr varchar(2),
+	rssdid varchar(7),
+	unit varchar(1),
+	address varchar(60),
+	city__0 varchar(20),
+	stalp varchar(2),
+	zip__0 varchar(5),
+	asset bigint,
+	bkclass varchar(2),
+	call varchar(4),
+	charter varchar(5),
+	chrtagnn varchar(27),
+	chrtagnt varchar(5),
+	clcode varchar(2),
+	cntryna varchar(19),
+	denovo varchar(1),
+	depdom bigint,
+	depsum varchar(11),
+	docket varchar(5),
+	escrow varchar,
+	fdicdbs varchar(2),
+	fdicname varchar(13),
+	fed varchar(2),
+	fedname varchar(13),
+	insagnt1 varchar(3),
+	insured varchar(2),
+	insbrdd varchar,
+	insbrts varchar,
+	occdist varchar(1),
+	occname varchar(19),
+	regagnt varchar(4),
+	specgrp varchar(5),
+	specdesc varchar(22),
+	stcnty varchar(5),
+	stname varchar(20),
+	usa varchar(1),
+	latitude numeric(11, 8),
+	longitude numeric(11, 8),
+	accuracy_score numeric(4, 2),
+	accuracy_type varchar(21),
+	number varchar(6),
+	street varchar(30),
+	unit_type varchar(5),
+	unit_number varchar(5),
+	city__1 varchar(22),
+	state varchar(2),
+	county varchar(22),
+	zip__1 varchar(5),
+	country varchar(2),
+	source varchar(53),
+	geog_point text,
+	geom text,
+	g_lat numeric(11,8),
+	g_lng numeric(11,8)
+);
+
+copy fdic_m
+from '/Users/glevines/Documents/projects/ca-banks/sql/data/manual/ca_banks_manual_geocoding_fdic.csv' 
+with (format csv, header);
+
+update fdic f
+	set latitude = (select m.g_lat from fdic_m m where f.uninumbr = m.uninumbr),
+	longitude = (select m.g_lng from fdic_m m where f.uninumbr = m.uninumbr)
+where uninumbr in (select m.uninumbr from fdic_m m);
+
+	
 -- CREDIT UNIONS --
 create table ncua (
 	cu_number varchar(5),
@@ -405,121 +665,185 @@ create table ncua (
 copy ncua
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/ncua-ca-az-nv-or-member-services-geocodio.csv' with (format csv, header);
 
-select *
-from ncua;
-
 alter table ncua
-add column geog_point geography(point, 4269);
+	add column id varchar(10);
 
 update ncua
-set geog_point = st_setsrid(
-		st_makepoint(longitude__1, latitude__1),
-		4269
-	)::geography;
+	set id = join_number || siteid;
 
-create index creditus_pts_idx on ncua using gist (geog_point);
+create table pts_ncua as (select * from ncua);
 
-select *,
-	st_astext(geog_point)
-from ncua;
+alter table pts_ncua
+	add column geog_point geography(point, 4269),
+	add column wkt text;
 
--------------------------------
--- BETTER NAMING CONVENTIONS --
--------------------------------
-alter table us_counties_shp
-	rename to shp_us_counties;
+create index ncua_pts_idx on pts_ncua using gist (geog_point);
+create index ncua_pts_bt_idx on pts_ncua using btree (id);
 
-alter table ca_counties_shp
-	rename to shp_ca_counties;
+create or replace function update_pts_ncua()
+	returns trigger as
+	$$
+	begin
+		raise info 'Triggered!';
+		update pts_ncua p
+			set latitude__1 = (select n.latitude__1 from ncua n where p.id = n.id),
+			longitude__1 = (select n.longitude__1 from ncua n where p.id = n.id);
+		update pts_ncua p
+			set geog_point = st_setsrid(st_makepoint(longitude__1, latitude__1), 4269)::geography;
+		update pts_ncua p
+			set wkt = st_astext(geog_point);
+		return new;
+	end;
+	$$ language plpgsql;
+	
+create trigger ncua_statement
+	after update
+		on ncua
+	for each statement
+	execute procedure update_pts_ncua();
 
-alter table ca_urban_areas_shp
-	rename to shp_ca_urban_areas;
+-- Update lat, lng w/ low accuracy score w/ Google Geocoded --
+create table ncua_g (
+	id varchar(10),
+	cu_number varchar(5),
+	cycle_date varchar(9),
+	join_number varchar(5),
+	siteid varchar(5),
+	cu_name varchar(35),
+	sitename varchar(61),
+	sitetypename varchar(16),
+	mainoffice varchar(3),
+	physicaladdressline1 varchar(52),
+	physicaladdressline2 varchar(41),
+	physicaladdresscity varchar(21),
+	physicaladdressstatecode varchar(2),
+	physicaladdresspostalcode varchar(10),
+	physicaladdresscountyname varchar(15),
+	physicaladdresscountry varchar(13),
+	mailingaddressline1 varchar(52),
+	mailingaddressline2 varchar(33),
+	mailingaddresscity varchar(21),
+	mailingaddressstatecode varchar(2),
+	mailingaddressstatename varchar(10),
+	mailingaddresspostalcode varchar(10),
+	phonenumber varchar(11),
+	hoursofoperation varchar(233),
+	memberservices varchar(1),
+	atm varchar(1),
+	drivethru varchar(1),
+	latitude__0 numeric(11, 8),
+	longitude__0 numeric(11, 8),
+	latitude__1 numeric(11, 8),
+	longitude__1 numeric(11, 8),
+	accuracy_score numeric(4, 2),
+	accuracy_type varchar(21),
+	number varchar(5),
+	street varchar(30),
+	unit_type varchar(5),
+	unit_number varchar(5),
+	city varchar(21),
+	state varchar(2),
+	county varchar(22),
+	zip varchar(5),
+	country varchar(2),
+	source varchar(53),
+	geog_point text,
+	wkt text,
+	g_lat numeric(11,8),
+	g_lng numeric(11,8)
+);
 
-alter table us_urban_areas_shp
-	rename to shp_us_urban_areas;
+copy ncua_g
+from '/Users/glevines/Documents/projects/ca-banks/sd-banks-py/data/processed/ncua_google_geocode.csv' 
+with (format csv, header);
 
-alter table ca_blocks_shp
-	rename to shp_ca_blocks;
+update ncua n
+	set latitude__1 = (select g.g_lat from ncua_g g where n.id = g.id),
+	longitude__1 = (select g.g_lng from ncua_g g where n.id = g.id)
+where id in (select g.id from ncua_g g);
 
-alter table state
-	rename to demographics_state;
+-- Update lat, lng w/ no Google Geocoded w/ manually geocoded --
+create table ncua_m (
+	id varchar(10),
+	cu_number varchar(5),
+	cycle_date varchar(9),
+	join_number varchar(5),
+	siteid varchar(5),
+	cu_name varchar(35),
+	sitename varchar(61),
+	sitetypename varchar(16),
+	mainoffice varchar(3),
+	physicaladdressline1 varchar(52),
+	physicaladdressline2 varchar(41),
+	physicaladdresscity varchar(21),
+	physicaladdressstatecode varchar(2),
+	physicaladdresspostalcode varchar(10),
+	physicaladdresscountyname varchar(15),
+	physicaladdresscountry varchar(13),
+	mailingaddressline1 varchar(52),
+	mailingaddressline2 varchar(33),
+	mailingaddresscity varchar(21),
+	mailingaddressstatecode varchar(2),
+	mailingaddressstatename varchar(10),
+	mailingaddresspostalcode varchar(10),
+	phonenumber varchar(11),
+	hoursofoperation varchar(233),
+	memberservices varchar(1),
+	atm varchar(1),
+	drivethru varchar(1),
+	latitude__0 numeric(11, 8),
+	longitude__0 numeric(11, 8),
+	latitude__1 numeric(11, 8),
+	longitude__1 numeric(11, 8),
+	accuracy_score numeric(4, 2),
+	accuracy_type varchar(21),
+	number varchar(5),
+	street varchar(30),
+	unit_type varchar(5),
+	unit_number varchar(5),
+	city varchar(21),
+	state varchar(2),
+	county varchar(22),
+	zip varchar(5),
+	country varchar(2),
+	source varchar(53),
+	geog_point text,
+	wkt text,
+	g_lat numeric(11,8),
+	g_lng numeric(11,8)
+);
 
-alter table blocks_demographics
-	rename to demographics_ca_blocks;
+copy ncua_m
+from '/Users/glevines/Documents/projects/ca-banks/sql/data/manual/ca_banks_manual_geocoding_ncua.csv' 
+with (format csv, header);
 
-alter table blocks_demographics_geoid
-	rename to demographics_ca_blocks_geoid;
+update ncua n
+	set latitude__1 = (select m.g_lat from ncua_m m where n.id = m.id),
+	longitude__1 = (select m.g_lng from ncua_m m where n.id = m.id)
+where id in (select m.id from ncua_m m);
 
-alter table fdic
-	rename to pts_fdic;
 
-alter table ncua
-	rename to pts_ncua;
+---------------------------------
+-- DERIVATIVE TABLES and VIEWS --
+---------------------------------
 
------------
--- VIEWS --
------------
--- pts_fdic_ncua --
+create table pts_fdic_ncua as (
 SELECT f.uninumbr AS id,
 	f.geog_point,
-	st_astext(f.geog_point) AS pts,
-	f.accuracy_score AS accuracy
+	st_astext(f.geog_point) AS wkt,
+	f.accuracy_score
 FROM pts_fdic f
 UNION
 SELECT n.id,
 	n.geog_point,
-	st_astext(n.geog_point) AS pts,
-	n.accuracy_score AS accuracy
-FROM pts_ncua_w_uid n;
+	st_astext(n.geog_point) AS wkt,
+	n.accuracy_score
+FROM pts_ncua n);
 
--- pts_ncua_w_uid --
-SELECT pts_ncua.join_number::text || pts_ncua.siteid::text AS id,
-	pts_ncua.cu_number,
-	pts_ncua.cycle_date,
-	pts_ncua.join_number,
-	pts_ncua.siteid,
-	pts_ncua.cu_name,
-	pts_ncua.sitename,
-	pts_ncua.sitetypename,
-	pts_ncua.mainoffice,
-	pts_ncua.physicaladdressline1,
-	pts_ncua.physicaladdressline2,
-	pts_ncua.physicaladdresscity,
-	pts_ncua.physicaladdressstatecode,
-	pts_ncua.physicaladdresspostalcode,
-	pts_ncua.physicaladdresscountyname,
-	pts_ncua.physicaladdresscountry,
-	pts_ncua.mailingaddressline1,
-	pts_ncua.mailingaddressline2,
-	pts_ncua.mailingaddresscity,
-	pts_ncua.mailingaddressstatecode,
-	pts_ncua.mailingaddressstatename,
-	pts_ncua.mailingaddresspostalcode,
-	pts_ncua.phonenumber,
-	pts_ncua.hoursofoperation,
-	pts_ncua.memberservices,
-	pts_ncua.atm,
-	pts_ncua.drivethru,
-	pts_ncua.latitude__0,
-	pts_ncua.longitude__0,
-	pts_ncua.latitude__1,
-	pts_ncua.longitude__1,
-	pts_ncua.accuracy_score,
-	pts_ncua.accuracy_type,
-	pts_ncua.number,
-	pts_ncua.street,
-	pts_ncua.unit_type,
-	pts_ncua.unit_number,
-	pts_ncua.city,
-	pts_ncua.state,
-	pts_ncua.county,
-	pts_ncua.zip,
-	pts_ncua.country,
-	pts_ncua.source,
-	pts_ncua.geog_point
-FROM pts_ncua;
+create index pts_fdic_ncua_bt_idx on pts_fdic_ncua using btree (id);
+create index pts_fdic_ncua_gist_idx on pts_fdic_ncua using gist (geog_point);
 
--- shp_blocks_in_uas --
+create table shp_blocks_in_uas as (
 SELECT b.geoid20 AS block_id,
 	u.name10 AS ua,
 	u.geoid10 AS ua_id,
@@ -561,9 +885,13 @@ SELECT b.geoid20 AS block_id,
 FROM shp_ca_urban_areas u
 	JOIN shp_ca_blocks b ON st_contains(u.geom, b.geom),
 	demographics_ca_blocks_summary_pct_geoid d
-WHERE d.geoid = b.geoid20::text;
+WHERE d.geoid = b.geoid20::text);
 
--- shp_uas_demographic_summary --
+create index shp_blocks_in_uas_bt_idx on shp_blocks_in_uas using btree (ua_id);
+create index shp_blocks_in_uas_blk_gist_idx on shp_blocks_in_uas using gist (block_geom);
+create index shp_blocks_in_uas_ua_gist_idx on shp_blocks_in_uas using gist (ua_geom);
+
+create table shp_uas_demographic_summary as (
 SELECT shp_blocks_in_uas.ua,
 	shp_blocks_in_uas.ua_id,
 	shp_blocks_in_uas.ua_geom,
@@ -651,50 +979,20 @@ FROM shp_blocks_in_uas
 GROUP BY shp_blocks_in_uas.ua,
 	shp_blocks_in_uas.ua_id,
 	shp_blocks_in_uas.ua_geom
-ORDER BY (sum(shp_blocks_in_uas.total)) DESC;
+ORDER BY (sum(shp_blocks_in_uas.total)) DESC);
 
--- shp_ca_urban_areas --
-SELECT shp_us_urban_areas.gid,
-	shp_us_urban_areas.uace10,
-	shp_us_urban_areas.geoid10,
-	shp_us_urban_areas.name10,
-	shp_us_urban_areas.namelsad10,
-	shp_us_urban_areas.lsad10,
-	shp_us_urban_areas.mtfcc10,
-	shp_us_urban_areas.uatyp10,
-	shp_us_urban_areas.funcstat10,
-	shp_us_urban_areas.aland10,
-	shp_us_urban_areas.awater10,
-	shp_us_urban_areas.intptlat10,
-	shp_us_urban_areas.intptlon10,
-	shp_us_urban_areas.geom
-FROM shp_us_urban_areas
-WHERE shp_us_urban_areas.name10::text ~~ '%, CA'::text;
+create index shp_uas_demographic_summary_bt_idx on shp_uas_demographic_summary using btree (ua_id);
+create index shp_uas_demographic_summary_gist_idx on shp_uas_demographic_summary using gist (ua_geom);
 
--- shp_ca_counties --
-SELECT shp_us_counties.gid,
-	shp_us_counties.statefp,
-	shp_us_counties.countyfp,
-	shp_us_counties.countyns,
-	shp_us_counties.geoid,
-	shp_us_counties.name,
-	shp_us_counties.namelsad,
-	shp_us_counties.lsad,
-	shp_us_counties.classfp,
-	shp_us_counties.mtfcc,
-	shp_us_counties.csafp,
-	shp_us_counties.cbsafp,
-	shp_us_counties.metdivfp,
-	shp_us_counties.funcstat,
-	shp_us_counties.aland,
-	shp_us_counties.awater,
-	shp_us_counties.intptlat,
-	shp_us_counties.intptlon,
-	shp_us_counties.geom
-FROM shp_us_counties
-WHERE shp_us_counties.statefp::text = '06'::text;
+create view pts_fdic_ncua_below_95 as 
+SELECT pts_fdic_ncua.id,
+	pts_fdic_ncua.geog_point,
+	pts_fdic_ncua.wkt,
+	pts_fdic_ncua.accuracy_score
+FROM pts_fdic_ncua
+WHERE pts_fdic_ncua.accuracy_score <= 0.95;
 
--- pts_ncua_below_95 --
+create view pts_ncua_below_95 as 
 SELECT p.id,
 	p.cu_number,
 	p.cycle_date,
@@ -739,19 +1037,11 @@ SELECT p.id,
 	p.country,
 	p.source,
 	p.geog_point
-FROM pts_ncua_w_uid p,
+FROM pts_ncua p,
 	pts_fdic_ncua_below_95 b
 WHERE b.id::text = p.id;
 
--- pts_fdic_ncua_below_95 --
-SELECT pts_fdic_ncua.id,
-	pts_fdic_ncua.geog_point,
-	pts_fdic_ncua.pts,
-	pts_fdic_ncua.accuracy
-FROM pts_fdic_ncua
-WHERE pts_fdic_ncua.accuracy <= 0.95;
-
--- pts_fdic_below_95 --
+create view pts_fdic_below_95 as 
 SELECT p.year,
 	p.cert,
 	p.brnum,
@@ -850,102 +1140,91 @@ FROM pts_fdic p,
 	pts_fdic_ncua_below_95 b
 WHERE b.id::text = p.uninumbr::text;
 
--- demographics_ca_blocks_summary_pct_geoid --
-SELECT demographics_ca_blocks_geoid.geographic_area_name,
-	demographics_ca_blocks_geoid.geoid,
-	demographics_ca_blocks_geoid.total,
-	demographics_ca_blocks_geoid.hispanic_or_latino AS ct_hispanic_or_latino,
-	round(
-		demographics_ca_blocks_geoid.hispanic_or_latino::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_hispanic_or_latino,
-	demographics_ca_blocks_geoid.not_hispanic_or_latino AS ct_not_hispanic_or_latino,
-	round(
-		demographics_ca_blocks_geoid.not_hispanic_or_latino::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_not_hispanic_or_latino,
-	demographics_ca_blocks_geoid.wt + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_wt,
-	round(
-		(
-			demographics_ca_blocks_geoid.wt + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_wt,
-	demographics_ca_blocks_geoid.blkafam + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_blkafam,
-	round(
-		(
-			demographics_ca_blocks_geoid.blkafam + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_blkafam,
-	demographics_ca_blocks_geoid.natcon + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_natcon,
-	round(
-		(
-			demographics_ca_blocks_geoid.natcon + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_natcon,
-	demographics_ca_blocks_geoid.asian + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_asian,
-	round(
-		(
-			demographics_ca_blocks_geoid.asian + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_asian,
-	demographics_ca_blocks_geoid.natisl + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_natisl,
-	round(
-		(
-			demographics_ca_blocks_geoid.natisl + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_natisl,
-	demographics_ca_blocks_geoid.othr + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_othr,
-	round(
-		(
-			demographics_ca_blocks_geoid.othr + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
-		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_othr,
-	demographics_ca_blocks_geoid.one_race,
-	round(
-		demographics_ca_blocks_geoid.one_race::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_one_race,
-	demographics_ca_blocks_geoid.two_or_more_races,
-	round(
-		demographics_ca_blocks_geoid.two_or_more_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_two_or_more_races,
-	demographics_ca_blocks_geoid.two_races,
-	round(
-		demographics_ca_blocks_geoid.two_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_two_races,
-	demographics_ca_blocks_geoid.three_races,
-	round(
-		demographics_ca_blocks_geoid.three_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_three_races,
-	demographics_ca_blocks_geoid.four_races,
-	round(
-		demographics_ca_blocks_geoid.four_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_four_races,
-	demographics_ca_blocks_geoid.five_races,
-	round(
-		demographics_ca_blocks_geoid.five_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_five_races,
-	demographics_ca_blocks_geoid.six_races,
-	round(
-		demographics_ca_blocks_geoid.six_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
-		2
-	) AS pct_six_races
-FROM demographics_ca_blocks_geoid
-WHERE demographics_ca_blocks_geoid.total > 0
-ORDER BY demographics_ca_blocks_geoid.total DESC;
+create table demographics_ca_blocks_geoid as (
+SELECT "right"(demographics_ca_blocks.id::text, 15) AS geoid,
+	demographics_ca_blocks.id,
+	demographics_ca_blocks.geographic_area_name,
+	demographics_ca_blocks.total,
+	demographics_ca_blocks.hispanic_or_latino,
+	demographics_ca_blocks.not_hispanic_or_latino,
+	demographics_ca_blocks.one_race,
+	demographics_ca_blocks.wt,
+	demographics_ca_blocks.blkafam,
+	demographics_ca_blocks.natcon,
+	demographics_ca_blocks.asian,
+	demographics_ca_blocks.natisl,
+	demographics_ca_blocks.othr,
+	demographics_ca_blocks.two_or_more_races,
+	demographics_ca_blocks.two_races,
+	demographics_ca_blocks.wt_blkafam,
+	demographics_ca_blocks.wt_natcon,
+	demographics_ca_blocks.wt_asian,
+	demographics_ca_blocks.wt_natisl,
+	demographics_ca_blocks.wt_othr,
+	demographics_ca_blocks.blkafam_natcon,
+	demographics_ca_blocks.blkafam_asian,
+	demographics_ca_blocks.blkafam_natisl,
+	demographics_ca_blocks.blkafam_othr,
+	demographics_ca_blocks.natcon_asian,
+	demographics_ca_blocks.natcon_natisl,
+	demographics_ca_blocks.natcon_othr,
+	demographics_ca_blocks.asian_natisl,
+	demographics_ca_blocks.asian_othr,
+	demographics_ca_blocks.natisl_othr,
+	demographics_ca_blocks.three_races,
+	demographics_ca_blocks.wt_blkafam_natcon,
+	demographics_ca_blocks.wt_blkafam_asian,
+	demographics_ca_blocks.wt_blkafam_natisl,
+	demographics_ca_blocks.wt_blkafam_othr,
+	demographics_ca_blocks.wt_natcon_asian,
+	demographics_ca_blocks.wt_natcon_natisl,
+	demographics_ca_blocks.wt_natcon_othr,
+	demographics_ca_blocks.wt_asian_natisl,
+	demographics_ca_blocks.wt_asian_othr,
+	demographics_ca_blocks.wt_natisl_othr,
+	demographics_ca_blocks.blkafam_natcon_asian,
+	demographics_ca_blocks.blkafam_natcon_natisl,
+	demographics_ca_blocks.blkafam_natcon_othr,
+	demographics_ca_blocks.blkafam_asian_natisl,
+	demographics_ca_blocks.blkafam_asian_othr,
+	demographics_ca_blocks.blkafam_natisl_othr,
+	demographics_ca_blocks.natcon_asian_natisl,
+	demographics_ca_blocks.natcon_asian_othr,
+	demographics_ca_blocks.natcon_natisl_othr,
+	demographics_ca_blocks.asian_natisl_othr,
+	demographics_ca_blocks.four_races,
+	demographics_ca_blocks.wt_blkafam_natcon_asian,
+	demographics_ca_blocks.wt_blkafam_natcon_natisl,
+	demographics_ca_blocks.wt_blkafam_natcon_othr,
+	demographics_ca_blocks.wt_blkafam_asian_natisl,
+	demographics_ca_blocks.wt_blkafam_asian_othr,
+	demographics_ca_blocks.wt_blkafam_natisl_othr,
+	demographics_ca_blocks.wt_natcon_asian_natisl,
+	demographics_ca_blocks.wt_natcon_asian_othr,
+	demographics_ca_blocks.wt_natcon_natisl_othr,
+	demographics_ca_blocks.wt_asian_natisl_othr,
+	demographics_ca_blocks.blkafam_natcon_asian_natisl,
+	demographics_ca_blocks.blkafam_natcon_asian_othr,
+	demographics_ca_blocks.blkafam_natcon_natisl_othr,
+	demographics_ca_blocks.blkafam_asian_natisl_othr,
+	demographics_ca_blocks.natcon_asian_natisl_othr,
+	demographics_ca_blocks.five_races,
+	demographics_ca_blocks.wt_blkafam_natcon_asian_natisl,
+	demographics_ca_blocks.wt_blkafam_natcon_asian_othr,
+	demographics_ca_blocks.wt_blkafam_natcon_natisl_othr,
+	demographics_ca_blocks.wt_blkafam_asian_natisl_othr,
+	demographics_ca_blocks.wt_natcon_asian_natisl_othr,
+	demographics_ca_blocks.blkafam_natcon_asian_natisl_othr,
+	demographics_ca_blocks.six_races,
+	demographics_ca_blocks.wt_blkafam_natcon_asian_natisl_othr
+FROM demographics_ca_blocks
+ORDER BY demographics_ca_blocks.total DESC
+);
 
--- demographics_ca_blocks_pct_geoid --
+create index demographics_ca_blocks_geoid_bt_idx on demographics_ca_blocks_geoid using btree (geoid);
+
+
+create table demographics_ca_blocks_pct_geoid as (
 SELECT demographics_ca_blocks_geoid.geographic_area_name,
 	demographics_ca_blocks_geoid.geoid,
 	demographics_ca_blocks_geoid.total,
@@ -1238,84 +1517,397 @@ SELECT demographics_ca_blocks_geoid.geographic_area_name,
 		2
 	) AS pct_wt_blkafam_natcon_asian_natisl_othr
 FROM demographics_ca_blocks_geoid
-WHERE demographics_ca_blocks_geoid.total > 0;
+WHERE demographics_ca_blocks_geoid.total > 0);
 
--- demographics_ca_blocks_geoid --
-SELECT "right"(demographics_ca_blocks.id::text, 15) AS geoid,
-	demographics_ca_blocks.id,
-	demographics_ca_blocks.geographic_area_name,
-	demographics_ca_blocks.total,
-	demographics_ca_blocks.hispanic_or_latino,
-	demographics_ca_blocks.not_hispanic_or_latino,
-	demographics_ca_blocks.one_race,
-	demographics_ca_blocks.wt,
-	demographics_ca_blocks.blkafam,
-	demographics_ca_blocks.natcon,
-	demographics_ca_blocks.asian,
-	demographics_ca_blocks.natisl,
-	demographics_ca_blocks.othr,
-	demographics_ca_blocks.two_or_more_races,
-	demographics_ca_blocks.two_races,
-	demographics_ca_blocks.wt_blkafam,
-	demographics_ca_blocks.wt_natcon,
-	demographics_ca_blocks.wt_asian,
-	demographics_ca_blocks.wt_natisl,
-	demographics_ca_blocks.wt_othr,
-	demographics_ca_blocks.blkafam_natcon,
-	demographics_ca_blocks.blkafam_asian,
-	demographics_ca_blocks.blkafam_natisl,
-	demographics_ca_blocks.blkafam_othr,
-	demographics_ca_blocks.natcon_asian,
-	demographics_ca_blocks.natcon_natisl,
-	demographics_ca_blocks.natcon_othr,
-	demographics_ca_blocks.asian_natisl,
-	demographics_ca_blocks.asian_othr,
-	demographics_ca_blocks.natisl_othr,
-	demographics_ca_blocks.three_races,
-	demographics_ca_blocks.wt_blkafam_natcon,
-	demographics_ca_blocks.wt_blkafam_asian,
-	demographics_ca_blocks.wt_blkafam_natisl,
-	demographics_ca_blocks.wt_blkafam_othr,
-	demographics_ca_blocks.wt_natcon_asian,
-	demographics_ca_blocks.wt_natcon_natisl,
-	demographics_ca_blocks.wt_natcon_othr,
-	demographics_ca_blocks.wt_asian_natisl,
-	demographics_ca_blocks.wt_asian_othr,
-	demographics_ca_blocks.wt_natisl_othr,
-	demographics_ca_blocks.blkafam_natcon_asian,
-	demographics_ca_blocks.blkafam_natcon_natisl,
-	demographics_ca_blocks.blkafam_natcon_othr,
-	demographics_ca_blocks.blkafam_asian_natisl,
-	demographics_ca_blocks.blkafam_asian_othr,
-	demographics_ca_blocks.blkafam_natisl_othr,
-	demographics_ca_blocks.natcon_asian_natisl,
-	demographics_ca_blocks.natcon_asian_othr,
-	demographics_ca_blocks.natcon_natisl_othr,
-	demographics_ca_blocks.asian_natisl_othr,
-	demographics_ca_blocks.four_races,
-	demographics_ca_blocks.wt_blkafam_natcon_asian,
-	demographics_ca_blocks.wt_blkafam_natcon_natisl,
-	demographics_ca_blocks.wt_blkafam_natcon_othr,
-	demographics_ca_blocks.wt_blkafam_asian_natisl,
-	demographics_ca_blocks.wt_blkafam_asian_othr,
-	demographics_ca_blocks.wt_blkafam_natisl_othr,
-	demographics_ca_blocks.wt_natcon_asian_natisl,
-	demographics_ca_blocks.wt_natcon_asian_othr,
-	demographics_ca_blocks.wt_natcon_natisl_othr,
-	demographics_ca_blocks.wt_asian_natisl_othr,
-	demographics_ca_blocks.blkafam_natcon_asian_natisl,
-	demographics_ca_blocks.blkafam_natcon_asian_othr,
-	demographics_ca_blocks.blkafam_natcon_natisl_othr,
-	demographics_ca_blocks.blkafam_asian_natisl_othr,
-	demographics_ca_blocks.natcon_asian_natisl_othr,
-	demographics_ca_blocks.five_races,
-	demographics_ca_blocks.wt_blkafam_natcon_asian_natisl,
-	demographics_ca_blocks.wt_blkafam_natcon_asian_othr,
-	demographics_ca_blocks.wt_blkafam_natcon_natisl_othr,
-	demographics_ca_blocks.wt_blkafam_asian_natisl_othr,
-	demographics_ca_blocks.wt_natcon_asian_natisl_othr,
-	demographics_ca_blocks.blkafam_natcon_asian_natisl_othr,
-	demographics_ca_blocks.six_races,
-	demographics_ca_blocks.wt_blkafam_natcon_asian_natisl_othr
-FROM demographics_ca_blocks
-ORDER BY demographics_ca_blocks.total DESC;
+create index demographics_ca_blocks_pct_geoid_bt_idx on demographics_ca_blocks_pct_geoid using btree (geoid);
+
+
+create table demographics_ca_blocks_summary_pct_geoid as (
+SELECT demographics_ca_blocks_geoid.geographic_area_name,
+	demographics_ca_blocks_geoid.geoid,
+	demographics_ca_blocks_geoid.total,
+	demographics_ca_blocks_geoid.hispanic_or_latino AS ct_hispanic_or_latino,
+	round(
+		demographics_ca_blocks_geoid.hispanic_or_latino::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_hispanic_or_latino,
+	demographics_ca_blocks_geoid.not_hispanic_or_latino AS ct_not_hispanic_or_latino,
+	round(
+		demographics_ca_blocks_geoid.not_hispanic_or_latino::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_not_hispanic_or_latino,
+	demographics_ca_blocks_geoid.wt + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_wt,
+	round(
+		(
+			demographics_ca_blocks_geoid.wt + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_wt,
+	demographics_ca_blocks_geoid.blkafam + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_blkafam,
+	round(
+		(
+			demographics_ca_blocks_geoid.blkafam + demographics_ca_blocks_geoid.wt_blkafam + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_blkafam,
+	demographics_ca_blocks_geoid.natcon + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_natcon,
+	round(
+		(
+			demographics_ca_blocks_geoid.natcon + demographics_ca_blocks_geoid.wt_natcon + demographics_ca_blocks_geoid.blkafam_natcon + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_natcon,
+	demographics_ca_blocks_geoid.asian + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_asian,
+	round(
+		(
+			demographics_ca_blocks_geoid.asian + demographics_ca_blocks_geoid.wt_asian + demographics_ca_blocks_geoid.blkafam_asian + demographics_ca_blocks_geoid.natcon_asian + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian + demographics_ca_blocks_geoid.wt_natcon_asian + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_asian,
+	demographics_ca_blocks_geoid.natisl + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_natisl,
+	round(
+		(
+			demographics_ca_blocks_geoid.natisl + demographics_ca_blocks_geoid.wt_natisl + demographics_ca_blocks_geoid.blkafam_natisl + demographics_ca_blocks_geoid.natcon_natisl + demographics_ca_blocks_geoid.asian_natisl + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl + demographics_ca_blocks_geoid.wt_asian_natisl + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl + demographics_ca_blocks_geoid.blkafam_asian_natisl + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_natisl,
+	demographics_ca_blocks_geoid.othr + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr AS ct_othr,
+	round(
+		(
+			demographics_ca_blocks_geoid.othr + demographics_ca_blocks_geoid.wt_othr + demographics_ca_blocks_geoid.blkafam_othr + demographics_ca_blocks_geoid.natcon_othr + demographics_ca_blocks_geoid.asian_othr + demographics_ca_blocks_geoid.natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_othr + demographics_ca_blocks_geoid.wt_natcon_othr + demographics_ca_blocks_geoid.wt_asian_othr + demographics_ca_blocks_geoid.wt_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_othr + demographics_ca_blocks_geoid.blkafam_asian_othr + demographics_ca_blocks_geoid.blkafam_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_othr + demographics_ca_blocks_geoid.natcon_natisl_othr + demographics_ca_blocks_geoid.asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_othr + demographics_ca_blocks_geoid.wt_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_asian_natisl_othr + demographics_ca_blocks_geoid.wt_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.blkafam_natcon_asian_natisl_othr + demographics_ca_blocks_geoid.wt_blkafam_natcon_asian_natisl_othr
+		)::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_othr,
+	demographics_ca_blocks_geoid.one_race,
+	round(
+		demographics_ca_blocks_geoid.one_race::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_one_race,
+	demographics_ca_blocks_geoid.two_or_more_races,
+	round(
+		demographics_ca_blocks_geoid.two_or_more_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_two_or_more_races,
+	demographics_ca_blocks_geoid.two_races,
+	round(
+		demographics_ca_blocks_geoid.two_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_two_races,
+	demographics_ca_blocks_geoid.three_races,
+	round(
+		demographics_ca_blocks_geoid.three_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_three_races,
+	demographics_ca_blocks_geoid.four_races,
+	round(
+		demographics_ca_blocks_geoid.four_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_four_races,
+	demographics_ca_blocks_geoid.five_races,
+	round(
+		demographics_ca_blocks_geoid.five_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_five_races,
+	demographics_ca_blocks_geoid.six_races,
+	round(
+		demographics_ca_blocks_geoid.six_races::numeric / demographics_ca_blocks_geoid.total::numeric * 100::numeric,
+		2
+	) AS pct_six_races
+FROM demographics_ca_blocks_geoid
+WHERE demographics_ca_blocks_geoid.total > 0
+ORDER BY demographics_ca_blocks_geoid.total DESC);
+
+create index demographics_ca_blocks_summary_pct_geoid_bt_idx on demographics_ca_blocks_summary_pct_geoid using btree (geoid);
+
+
+create table shpdemo_ca_blocks_pct_geoid as (
+SELECT d.geographic_area_name,
+    d.geoid,
+    d.total,
+    d.pct_hispanic_or_latino,
+    d.pct_not_hispanic_or_latino,
+    d.pct_one_race,
+    d.pct_wt,
+    d.pct_blkafam,
+    d.pct_natcon,
+    d.pct_asian,
+    d.pct_natisl,
+    d.pct_othr,
+    d.pct_two_or_more_races,
+    d.pct_two_races,
+    d.pct_wt_blkafam,
+    d.pct_wt_natcon,
+    d.pct_wt_asian,
+    d.pct_wt_natisl,
+    d.pct_wt_othr,
+    d.pct_blkafam_natcon,
+    d.pct_blkafam_asian,
+    d.pct_blkafam_natisl,
+    d.pct_blkafam_othr,
+    d.pct_natcon_asian,
+    d.pct_natcon_natisl,
+    d.pct_natcon_othr,
+    d.pct_asian_natisl,
+    d.pct_asian_othr,
+    d.pct_natisl_othr,
+    d.pct_three_races,
+    d.pct_wt_blkafam_natcon,
+    d.pct_wt_blkafam_asian,
+    d.pct_wt_blkafam_natisl,
+    d.pct_wt_blkafam_othr,
+    d.pct_wt_natcon_asian,
+    d.pct_wt_natcon_natisl,
+    d.pct_wt_natcon_othr,
+    d.pct_wt_asian_natisl,
+    d.pct_wt_asian_othr,
+    d.pct_wt_natisl_othr,
+    d.pct_blkafam_natcon_asian,
+    d.pct_blkafam_natcon_natisl,
+    d.pct_blkafam_natcon_othr,
+    d.pct_blkafam_asian_natisl,
+    d.pct_blkafam_asian_othr,
+    d.pct_blkafam_natisl_othr,
+    d.pct_natcon_asian_natisl,
+    d.pct_natcon_asian_othr,
+    d.pct_natcon_natisl_othr,
+    d.pct_asian_natisl_othr,
+    d.pct_four_races,
+    d.pct_wt_blkafam_natcon_asian,
+    d.pct_wt_blkafam_natcon_natisl,
+    d.pct_wt_blkafam_natcon_othr,
+    d.pct_wt_blkafam_asian_natisl,
+    d.pct_wt_blkafam_asian_othr,
+    d.pct_wt_blkafam_natisl_othr,
+    d.pct_wt_natcon_asian_natisl,
+    d.pct_wt_natcon_asian_othr,
+    d.pct_wt_natcon_natisl_othr,
+    d.pct_wt_asian_natisl_othr,
+    d.pct_blkafam_natcon_asian_natisl,
+    d.pct_blkafam_natcon_asian_othr,
+    d.pct_blkafam_natcon_natisl_othr,
+    d.pct_blkafam_asian_natisl_othr,
+    d.pct_natcon_asian_natisl_othr,
+    d.pct_five_races,
+    d.pct_wt_blkafam_natcon_asian_natisl,
+    d.pct_wt_blkafam_natcon_asian_othr,
+    d.pct_wt_blkafam_natcon_natisl_othr,
+    d.pct_wt_blkafam_asian_natisl_othr,
+    d.pct_wt_natcon_asian_natisl_othr,
+    d.pct_blkafam_natcon_asian_natisl_othr,
+    d.pct_six_races,
+    d.pct_wt_blkafam_natcon_asian_natisl_othr,
+    shp.geom
+FROM demographics_ca_blocks_pct_geoid d,
+    shp_ca_blocks shp
+WHERE d.geoid = shp.geoid20::text);
+
+create index shpdemo_ca_blocks_pct_geoid_bt_idx on shpdemo_ca_blocks_pct_geoid using btree (geoid);
+create index shpdemo_ca_blocks_pct_geoid_gist_idx on shpdemo_ca_blocks_pct_geoid using gist (geom);
+
+---------------------------
+-- ISO CLEANUP & MERGING --
+---------------------------
+
+-- add srids to isos
+create table tmp_iso_60_min_drive_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_60_min_drive_pts_fdic_ncua i);
+drop table iso_60_min_drive_pts_fdic_ncua;
+alter table tmp_iso_60_min_drive_pts_fdic_ncua
+	rename to iso_60_min_drive_pts_fdic_ncua;
+
+create table tmp_iso_30_min_drive_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_30_min_drive_pts_fdic_ncua i);
+drop table iso_30_min_drive_pts_fdic_ncua;
+alter table tmp_iso_30_min_drive_pts_fdic_ncua
+	rename to iso_30_min_drive_pts_fdic_ncua;
+
+create table tmp_iso_20_min_drive_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_20_min_drive_pts_fdic_ncua i);
+drop table iso_20_min_drive_pts_fdic_ncua;
+alter table tmp_iso_20_min_drive_pts_fdic_ncua
+	rename to iso_20_min_drive_pts_fdic_ncua;
+
+create table tmp_iso_10_min_drive_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_10_min_drive_pts_fdic_ncua i);
+drop table iso_10_min_drive_pts_fdic_ncua;
+alter table tmp_iso_10_min_drive_pts_fdic_ncua
+	rename to iso_10_min_drive_pts_fdic_ncua;
+
+create table tmp_iso_30_min_walk_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_30_min_walk_pts_fdic_ncua i);
+drop table iso_30_min_walk_pts_fdic_ncua;
+alter table tmp_iso_30_min_walk_pts_fdic_ncua
+	rename to iso_30_min_walk_pts_fdic_ncua;
+
+create table tmp_iso_20_min_walk_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_20_min_walk_pts_fdic_ncua i);
+drop table iso_20_min_walk_pts_fdic_ncua;
+alter table tmp_iso_20_min_walk_pts_fdic_ncua
+	rename to iso_20_min_walk_pts_fdic_ncua;
+
+create table tmp_iso_10_min_walk_pts_fdic_ncua as (select st_setsrid(i.geometry, 4269) as geom, i.* from iso_10_min_walk_pts_fdic_ncua i);
+drop table iso_10_min_walk_pts_fdic_ncua;
+alter table tmp_iso_10_min_walk_pts_fdic_ncua
+	rename to iso_10_min_walk_pts_fdic_ncua;
+	
+-- merge geometries for each interval into one, trim along CA border
+create table iso_60_min_drive_single as (
+	select st_union(i.geom) as geom from iso_60_min_drive_pts_fdic_ncua i
+);
+create index iso_60_min_drive_single_idx on iso_60_min_drive_single using gist (geom);
+
+create table iso_60_min_drive_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_60_min_drive_single i, shp_ca s
+);
+create index iso_60_min_drive_single_ca_idx on iso_60_min_drive_single_ca using gist (geom);
+
+create table iso_30_min_drive_single as (
+	select st_union(i.geom) as geom from iso_30_min_drive_pts_fdic_ncua i
+);
+create index iso_30_min_drive_single_idx on iso_30_min_drive_single using gist (geom);
+create table iso_30_min_drive_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_30_min_drive_single i, shp_ca s
+);
+create index iso_30_min_drive_single_ca_idx on iso_30_min_drive_single_ca using gist (geom);
+
+create table iso_20_min_drive_single as (
+	select st_union(i.geom) as geom from iso_20_min_drive_pts_fdic_ncua i
+);
+create index iso_20_min_drive_single_idx on iso_20_min_drive_single using gist (geom);
+create table iso_20_min_drive_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_20_min_drive_single i, shp_ca s
+);
+create index iso_20_min_drive_single_ca_idx on iso_20_min_drive_single_ca using gist (geom);
+
+create table iso_10_min_drive_single as (
+	select st_union(i.geom) as geom from iso_10_min_drive_pts_fdic_ncua i
+);
+create index iso_10_min_drive_single_idx on iso_10_min_drive_single using gist (geom);
+create table iso_10_min_drive_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_10_min_drive_single i, shp_ca s
+);
+create index iso_10_min_drive_single_ca_idx on iso_10_min_drive_single_ca using gist (geom);
+
+create table iso_30_min_walk_single as (
+	select st_union(i.geom) as geom from iso_30_min_walk_pts_fdic_ncua i
+);
+create index iso_30_min_walk_single_idx on iso_30_min_walk_single using gist (geom);
+create table iso_30_min_walk_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_30_min_walk_single i, shp_ca s
+);
+create index iso_30_min_walk_single_ca_idx on iso_30_min_walk_single_ca using gist (geom);
+
+create table iso_20_min_walk_single as (
+	select st_union(i.geom) as geom from iso_20_min_walk_pts_fdic_ncua i
+);
+create index iso_20_min_walk_single_idx on iso_20_min_walk_single using gist (geom);
+create table iso_20_min_walk_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_20_min_walk_single i, shp_ca s
+);
+create index iso_20_min_walk_single_ca_idx on iso_20_min_walk_single_ca using gist (geom);
+
+create table iso_10_min_walk_single as (
+	select st_union(i.geom) as geom from iso_10_min_walk_pts_fdic_ncua i
+);
+create index iso_10_min_walk_single_idx on iso_10_min_walk_single using gist (geom);
+create table iso_10_min_walk_single_ca as (
+	select st_intersection(i.geom, s.geom) as geom 
+	from iso_10_min_walk_single i, shp_ca s
+);
+create index iso_10_min_walk_single_ca_idx on iso_10_min_walk_single_ca using gist (geom);
+
+-- isolate longer time in the interval (i.e., remove 10min walks from 20min walk iso)
+create table iso_10_min_drive_single_ca_only as (
+	select st_difference(
+		(select geom from iso_10_min_drive_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca)
+			)
+		)	
+	) as geom
+);
+create index iso_10_min_drive_single_ca_only_idx on iso_10_min_drive_single_ca_only using gist (geom);
+
+create table iso_20_min_drive_single_ca_only as (
+	select st_difference(
+		(select geom from iso_20_min_drive_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca
+				union
+				select geom from iso_10_min_drive_single_ca)
+			)
+		)	
+	) as geom
+);
+create index iso_20_min_drive_single_ca_only_idx on iso_20_min_drive_single_ca_only using gist (geom);
+
+create table iso_30_min_drive_single_ca_only as (
+	select st_difference(
+		(select geom from iso_30_min_drive_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca
+				union
+				select geom from iso_10_min_drive_single_ca
+				union
+				select geom from iso_20_min_drive_single_ca
+				union
+				select geom from iso_20_min_walk_single_ca)
+			)
+		)	
+	) as geom
+);
+create index iso_30_min_drive_single_ca_only_idx on iso_30_min_drive_single_ca_only using gist (geom);
+
+create table iso_60_min_drive_single_ca_only as (
+	select st_difference(
+		(select geom from iso_60_min_drive_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca
+				union
+				select geom from iso_10_min_drive_single_ca
+				union
+				select geom from iso_20_min_drive_single_ca
+				union
+				select geom from iso_20_min_walk_single_ca
+				union
+				select geom from iso_30_min_drive_single_ca
+				union
+				select geom from iso_30_min_walk_single_ca
+				)
+			)
+		)	
+	) as geom
+);
+create index iso_60_min_drive_single_ca_only_idx on iso_60_min_drive_single_ca_only using gist (geom);
+
+create table iso_20_min_walk_single_ca_only as (
+	select st_difference(
+		(select geom from iso_20_min_walk_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca
+				)
+			)
+		)	
+	) as geom
+);
+create index iso_20_min_walk_single_ca_only_idx on iso_20_min_walk_single_ca_only using gist (geom);
+
+create table iso_30_min_walk_single_ca_only as (
+	select st_difference(
+		(select geom from iso_30_min_walk_single_ca), 
+		st_union(
+			array(
+				(select geom from iso_10_min_walk_single_ca
+				union
+				select geom from iso_20_min_walk_single_ca
+				)
+			)
+		)	
+	) as geom
+);
+create index iso_30_min_walk_single_ca_only_idx on iso_30_min_walk_single_ca_only using gist (geom);

@@ -83,6 +83,13 @@
     * Visidata move WKT column to end.
     * Save as: `sql/data/processed/california-counties-shapes-wkt.csv`
 
+* Shapefiles - US State 2021
+  * QGIS `sql/data/source/tl_2021_us_state/tl_2021_us_state.shp`
+    * Filter for only Calif. with `"STATEFP" = '06'`
+    * Export as csv w/ WKT column.
+    * Visidata move WKT column to end.
+    * Save as: `sql/data/processed/california-state-shape-wkt.csv`
+
 * Lookup table for P2 data
   * Visidata `vd --header=0 sql/data/source/state/DECENNIALPL2020.P2_2021-12-28T132330/DECENNIALPL2020.P2_data_with_overlays_2021-12-28T132323.csv`
     * Name columns with `jgz^` on row 2 then `[SPACE] normalize-col-names`
@@ -198,5 +205,6 @@
     * filter for 1 on memberservices
     * Save as: `sql/data/processed/ncua-ca-az-nv-or-member-services.csv`
       * Run through geocodio
+        * Note: Latitude__1 and Longitude__1 are geocodio's
       * Run Visidata `[SPACE] normalize-col-names`
       * Save as: `sql/data/processed/ncua-ca-az-nv-or-member-services-geocodio.csv`

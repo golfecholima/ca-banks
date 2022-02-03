@@ -3,10 +3,9 @@
 -------------
 -- Banks and credit unions
 select 
-	p.id,
-	st_astext(p.geog_point) as pts
+	*
 from 
-	pts_fdic_ncua p;
+	pts_fdic_ncua;
 	-- exported as `sql/data/processed/pts_fdic_ncua.csv`
 
 -- Banks and credit unions in urban areas
@@ -32,10 +31,12 @@ create materialized view pts_fdic_ncua_in_rural as
 	-- exported as `sql/data/processed/pts_fdic_ncua_in_rural.csv`
 
 -- Banks below 95 geocodio accuracy score
-create view pts_fdic_below_95 as select p.* from pts_fdic p, pts_fdic_ncua_below_95 b where b.id = p.uninumbr;
+select * from pts_fdic_below_95;
+	-- exported as `sql/data/processed/pts_fdic_below_95.csv`
 
 -- Credit unions below 95 geocodio accuracy score
-create view pts_ncua_below_95 as select p.* from pts_ncua_w_uid p, pts_fdic_ncua_below_95 b where b.id = p.id;
+select * from pts_fdic_ncua_below_95;
+	-- exported as `sql/data/processed/pts_ncua_below_95.csv`
 
 -- 30 min drive ua isochrones
 select st_astext(i.geometry) as iso, i.center
