@@ -80,7 +80,7 @@ create table demographics_ca (
 	wt_blkafam_natcon_asian_natisl_othr integer
 );
 
-copy state
+copy demographcis_ca
 from '/Users/glevines/Documents/projects/ca-banks/sql/data/processed/california-demographics.csv' with (format csv, header);
 
 create index demographcis_ca_bt_idx on demographcis_ca using btree (id);
@@ -196,7 +196,7 @@ create index shp_ca_blocks_idx on shp_ca_blocks using gist (geom);
 create index shp_ca_blocks_bt_idx on shp_ca_blocks using btree (geoid);
 
 -- COUNTY SHAPES --
--- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_us_county/tl_2021_us_county.shp shp_us_counties | psql -d ca-banks -U postgres
+-- $ shp2pgsql -I -s 4269 -W Latin1 ~/Documents/projects/ca-banks/sql/data/source/tl_2021_us_county/tl_2021_us_county.shp shp_us_counties | psql -d ca-banks -U postgres
 
 create table shp_ca_counties as (
 SELECT shp_us_counties.gid,
@@ -259,6 +259,12 @@ WHERE shp_us_urban_areas.name10::text ~~ '%, CA'::text);
 
 create index shp_us_urban_areas_gist_idx on shp_us_urban_areas using gist (geom);
 create index shp_us_urban_areas_bt_idx on shp_us_urban_areas using btree (geoid);
+
+-- CA TRACT SHAPES --
+-- $ shp2pgsql -I -s 4269 -W Latin1 /Users/glevines/Documents/projects/ca-banks/sql/data/source/tl_2021_06_tract/tl_2021_06_tract.shp shp_ca_tracts | psql -d ca-banks -U postgres
+
+create index shp_ca_tracts_gist_idx on shp_ca_tracts using gist (geom);
+create index shp_ca_tracts_bt_idx on shp_ca_tracts using btree (geoid);
 
 ------------------------------
 -- BANK/CREDIT UNION TABLES --
@@ -1911,3 +1917,69 @@ create table iso_30_min_walk_single_ca_only as (
 	) as geom
 );
 create index iso_30_min_walk_single_ca_only_idx on iso_30_min_walk_single_ca_only using gist (geom);
+
+
+-- Create single isochrone + UAS intersection geometries
+
+create table iso_10_min_drive_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_10_min_drive_single_ca_only_ua_idx on iso_10_min_drive_single_ca_only_ua using gist (geom);
+
+create table iso_20_min_drive_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_20_min_drive_single_ca_only_ua_idx on iso_20_min_drive_single_ca_only_ua using gist (geom);
+
+create table iso_30_min_drive_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_30_min_drive_single_ca_only_ua_idx on iso_30_min_drive_single_ca_only_ua using gist (geom);
+
+create table iso_60_min_drive_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_60_min_drive_single_ca_only_ua_idx on iso_60_min_drive_single_ca_only_ua using gist (geom);
+
+create table iso_10_min_walk_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_10_min_walk_single_ca_only_ua_idx on iso_10_min_walk_single_ca_only_ua using gist (geom);
+
+create table iso_20_min_walk_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_20_min_walk_single_ca_only_ua_idx on iso_20_min_walk_single_ca_only_ua using gist (geom);
+
+create table iso_30_min_walk_single_ca_only_ua as (
+	select
+		st_intersection(b.geom, s.geom) as geom
+	from
+		iso_10_min_drive_single_ca_only b,
+		shp_ca_urban_areas s
+);
+create index iso_30_min_walk_single_ca_only_ua_idx on iso_30_min_walk_single_ca_only_ua using gist (geom);
